@@ -18,7 +18,7 @@ def new_client(conn):
     while True:
         try:
             data = conn.recv(4096).decode()
-            if data != "none":
+            if data != "no data":
                 data = data.split("|")
                 user_data[data[0]] = [data[1]]
         except:
