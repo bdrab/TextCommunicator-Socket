@@ -6,17 +6,19 @@ from kivy.clock import Clock
 from kivy.uix.screenmanager import Screen, ScreenManager, NoTransition
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.gridlayout import GridLayout
+from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.spinner import Spinner, SpinnerOption
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.core.window import Window
 from kivy.app import App
+from kivy.uix.popup import Popup
 
 
 class MyTextInput(TextInput):
     def on_touch_down(self, touch):
-        if self.collide_point(*touch.pos) and self.text != "":
+        if self.collide_point(*touch.pos) and self.text != "" and not self.disabled:
             self.text = ""
         return super(MyTextInput, self).on_touch_down(touch)
 
@@ -62,6 +64,25 @@ class MainScreen(Screen):
         super().__init__(**kwargs)
         self.float_layout = FloatLayout()
 
+        try:
+            with open("config.txt", "r") as file:
+                user_id = file.read().split(":")[1]
+                disabled_status = True
+        except FileNotFoundError:
+            user_id = "Error. Please add your ID in settings menu. "
+
+
+        self.user_id = MyTextInput(text=user_id,
+                                   halign="center",
+                                   size_hint_x=None,
+                                   width=Window.size[0],
+                                   size_hint_y=None,
+                                   height=button_size,
+                                   disabled=True,
+                                   pos_hint={"x": 0, "y": 1 - button_size/Window.size[1]})
+
+        self.float_layout.add_widget(self.user_id)
+
         self.btn_conversation = Button(text="Conversation",
                                        pos_hint={"x": 0.2, "y": 0.7},
                                        size_hint=(0.6, 0.1),
@@ -80,21 +101,6 @@ class MainScreen(Screen):
                                    on_press=self.go_to)
         self.float_layout.add_widget(self.btn_settings)
 
-        self.user_id = Button(text="Settings",
-                                   pos_hint={"x": 0.2, "y": 0.3},
-                                   size_hint=(0.6, 0.1),
-                                   on_press=self.go_to)
-
-        self.user_id = MyTextInput(text="User ID",
-                                   halign="center",
-                                   size_hint_x=None,
-                                   width=6*Window.size[0]/10,
-                                   size_hint_y=None,
-                                   height=button_size,
-                                   pos_hint={"x": 0, "y": 1 - button_size/Window.size[1]})
-
-        self.float_layout.add_widget(self.user_id)
-
         self.add_widget(self.float_layout)
 
     def go_to(self, instance):
@@ -103,10 +109,19 @@ class MainScreen(Screen):
         elif instance == self.btn_settings:
             screen_manager.current = "settings"
         elif instance == self.btn_conversation:
-            screen_manager.current = "conversation"
-            network.id = self.user_id.text
-            network.user_created_status = network.connect()
-            Clock.schedule_interval(update_chat, 1)
+            if self.user_id.text != "User ID":
+                screen_manager.current = "conversation"
+                network.id = self.user_id.text
+                network.user_created_status = network.connect()
+                Clock.schedule_interval(update_chat, 1)
+            else:
+                btn_close = BoxLayout(orientation="horizontal")
+                popup_warning = Popup(title='Please provide correct User ID',
+                                      content=btn_close,
+                                      size_hint=(None, None),
+                                      size=(Window.width, Window.height / 8))
+                btn_close.add_widget(Button(text="close", on_press=popup_warning.dismiss))
+                popup_warning.open()
 
 
 class ConversationScreen(Screen):
@@ -246,33 +261,39 @@ class SettingsScreen(Screen):
         super().__init__(**kwargs)
         self.float_layout = FloatLayout()
 
-        self.btn_conversation = Button(text="Conversation",
-                                       pos_hint={"x": 0.2, "y": 0.7},
-                                       size_hint=(0.6, 0.1),
-                                       on_press=self.go_to)
-        self.float_layout.add_widget(self.btn_conversation)
+        self.go_back_to_menu = Button(text="Go back to menu",
+                                      pos_hint={"x": 0, "y": 1 - button_size/Window.size[1]},
+                                      size_hint=(1, button_size/Window.size[1]),
+                                      on_press=self.go_to)
+        self.float_layout.add_widget(self.go_back_to_menu)
 
-        self.btn_contacts = Button(text="Contacts",
-                                   pos_hint={"x": 0.2, "y": 0.5},
-                                   size_hint=(0.6, 0.1),
-                                   on_press=self.go_to)
-        self.float_layout.add_widget(self.btn_contacts)
+        self.user_id = MyTextInput(text="User ID",
+                                   halign="center",
+                                   size_hint_x=None,
+                                   width=Window.size[0],
+                                   size_hint_y=None,
+                                   height=button_size,
+                                   pos_hint={"x": 0, "y": 0.5 - button_size / Window.size[1]})
+        self.float_layout.add_widget(self.user_id)
 
-        self.btn_settings = Button(text="Settings",
-                                   pos_hint={"x": 0.2, "y": 0.3},
-                                   size_hint=(0.6, 0.1),
-                                   on_press=self.go_to)
-        self.float_layout.add_widget(self.btn_settings)
+        self.save_user_id = Button(text="Save",
+                                   pos_hint={"x": 0, "y": 0.5 - 2*button_size/Window.size[1]},
+                                   size_hint=(1, button_size/Window.size[1]),
+                                   on_press=self.save_id)
+        self.float_layout.add_widget(self.save_user_id)
 
         self.add_widget(self.float_layout)
 
     def go_to(self, instance):
-        if instance == self.btn_contacts:
-            screen_manager.current = "contacts"
-        elif instance == self.btn_settings:
-            screen_manager.current = "settings"
-        elif instance == self.btn_conversation:
-            screen_manager.current = "conversation"
+        if instance == self.go_back_to_menu:
+            screen_manager.current = "main"
+
+    def save_id(self, instance):
+        with open("config.txt", "w") as file:
+            file.write(f"user_id:{self.user_id.text}")
+
+        s1 = screen_manager.get_screen("main")
+        s1.user_id.text = self.user_id.text
 
 
 class MyApp(App):

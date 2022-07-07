@@ -7,13 +7,14 @@ port = 5050
 server_address = (server, port)
 s.bind(server_address)
 s.listen()
+print(f"Server online. Listening on {server}:{port}...")
 user_data = {}
 
 
 def new_client(conn):
     conn.send(str.encode("connected"))
     user_id = conn.recv(4096).decode()
-    print("User connected. ID: ", type(user_id))
+    print("User connected. ID: ", user_id)
     conn.send(str.encode("user created"))
     while True:
         try:
@@ -27,8 +28,8 @@ def new_client(conn):
         if user_id not in user_data:
             conn.send(str.encode("no data"))
         else:
-            my_string = "".join(map(str, user_data[user_id]))
-            conn.send(str.encode(my_string))
+            user_data_str = "".join(map(str, user_data[user_id]))
+            conn.send(str.encode(user_data_str))
             del user_data[user_id]
 
 
