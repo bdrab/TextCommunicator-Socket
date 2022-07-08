@@ -11,6 +11,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.spinner import Spinner, SpinnerOption
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
+from kivy.uix.label import Label
 from kivy.core.window import Window
 from kivy.app import App
 from kivy.uix.popup import Popup
@@ -67,10 +68,8 @@ class MainScreen(Screen):
         try:
             with open("config.txt", "r") as file:
                 user_id = file.read().split(":")[1]
-                disabled_status = True
         except FileNotFoundError:
-            user_id = "Error. Please add your ID in settings menu. "
-
+            user_id = "Error. Please add your ID in settings menu."
 
         self.user_id = MyTextInput(text=user_id,
                                    halign="center",
@@ -109,7 +108,7 @@ class MainScreen(Screen):
         elif instance == self.btn_settings:
             screen_manager.current = "settings"
         elif instance == self.btn_conversation:
-            if self.user_id.text != "User ID":
+            if self.user_id.text != "Error. Please add your ID in settings menu.":
                 screen_manager.current = "conversation"
                 network.id = self.user_id.text
                 network.user_created_status = network.connect()
@@ -151,15 +150,15 @@ class ConversationScreen(Screen):
                        on_press=self.do_nothing)
         self.float_layout.add_widget(btn_2)
 
-        self.layout = GridLayout(cols=2, spacing=10, size_hint_y=None)
+        self.layout = GridLayout(cols=1, spacing=10, size_hint_y=None)
         self.layout.bind(minimum_height=self.layout.setter('height'))
 
-        root = ScrollView(size_hint=(1, None),
-                          size=(Window.width, Window.height - 3 * button_size - 20),
-                          pos_hint={"x": 0, "y": (2 * button_size + 10)/Window.size[1]})
+        self.root = ScrollView(size_hint=(1, None),
+                               size=(Window.width, Window.height - 3 * button_size - 20),
+                               pos_hint={"x": 0, "y": (2 * button_size + 10)/Window.size[1]})
 
-        root.add_widget(self.layout)
-        self.float_layout.add_widget(root)
+        self.root.add_widget(self.layout)
+        self.float_layout.add_widget(self.root)
 
         self.data_input = MyTextInput(text="Type your message here...",
                                       halign="center",
@@ -179,44 +178,34 @@ class ConversationScreen(Screen):
         self.add_widget(self.float_layout)
 
     def add_new_row(self, client_message=True, data=None):
-        time = str(datetime.datetime.now())
+        time = str(datetime.datetime.now()).split(".")[0]
+        message_data = f"{time}\n{data}"
+
+        # TODO: Issue with fixed label's size needs to be resolved.
         if not client_message:
-            message_data = MyTextInput(text=data,
-                                       halign="center",
-                                       size_hint_x=None,
-                                       size_hint_y=None,
-                                       height=2*button_size,
-                                       width=Window.size[0] / 2 - 5)
+            message_data = Label(text=message_data,
+                                 halign="left",
+                                 size_hint_x=None,
+                                 size_hint_y=None,
+                                 height=2*button_size,
+                                 width=Window.size[0],
+                                 text_size=(Window.size[0], None))
 
             self.layout.add_widget(message_data)
-
-            message_time = MyTextInput(text=time,
-                                       halign="center",
-                                       size_hint_x=None,
-                                       size_hint_y=None,
-                                       height=2*button_size,
-                                       width=Window.size[0] / 2 - 5)
-            self.layout.add_widget(message_time)
 
         else:
-            message_time = MyTextInput(text=time,
-                                       halign="center",
-                                       size_hint_x=None,
-                                       size_hint_y=None,
-                                       height=button_size,
-                                       width=Window.size[0] / 2 - 5)
-            self.layout.add_widget(message_time)
-
-            message_data = MyTextInput(text=data,
-                                       halign="center",
-                                       size_hint_x=None,
-                                       size_hint_y=None,
-                                       height=button_size,
-                                       width=Window.size[0] / 2 - 5)
-
+            message_data = Label(text=message_data,
+                                 halign="right",
+                                 size_hint_x=None,
+                                 size_hint_y=None,
+                                 height=2*button_size,
+                                 width=Window.size[0],
+                                 text_size=(Window.size[0], None))
             self.layout.add_widget(message_data)
 
-        self.body_row_data.append([message_time, message_data])
+        self.root.scroll_to(message_data)
+
+        self.body_row_data.append([message_data])
 
     def do_nothing(self, instance):
         pass
