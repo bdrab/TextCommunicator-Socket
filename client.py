@@ -132,6 +132,7 @@ class ConversationScreen(Screen):
                                        halign="center",
                                        size_hint_x=None,
                                        width=6*Window.size[0]/10,
+                                       disabled=True,
                                        size_hint_y=None,
                                        height=button_size,
                                        pos_hint={"x": 0, "y": 1 - button_size/Window.size[1]})
@@ -224,9 +225,7 @@ class ContactsScreen(Screen):
                                on_press=self.go_to)
         self.float_layout.add_widget(self.btn_menu)
 
-
         popup_content = BoxLayout(orientation="vertical")
-
         label_box_1 = Label(text='User nickname')
         self.text_box_1 = MyTextInput(text='')
         popup_content.add_widget(label_box_1)
@@ -244,9 +243,6 @@ class ContactsScreen(Screen):
                                           on_press=self.popup_new_contact.open)
         self.float_layout.add_widget(self.btn_add_new_contact)
 
-
-
-
         self.layout = GridLayout(cols=2, spacing=10, size_hint_y=None)
         self.layout.bind(minimum_height=self.layout.setter('height'))
 
@@ -257,12 +253,13 @@ class ContactsScreen(Screen):
         self.root.add_widget(self.layout)
         self.float_layout.add_widget(self.root)
 
-        for i in range(30):
-            message_data = Button(text="<user name>",
+        for i in range(2):
+            message_data = Button(text=str(i),
                                   size_hint_x=None,
                                   size_hint_y=None,
                                   height=button_size,
-                                  width=3*Window.size[0]/4 - 5)
+                                  width=3*Window.size[0]/4 - 5,
+                                  on_press=self.open_conversation)
             self.layout.add_widget(message_data)
 
             message_data1 = Button(text="X",
@@ -282,8 +279,27 @@ class ContactsScreen(Screen):
         pass
 
     def add_new_contact(self, instance):
-        print("new contact", self.text_box_1.text)
+        message_data = Button(text=self.text_box_1.text,
+                              size_hint_x=None,
+                              size_hint_y=None,
+                              height=button_size,
+                              width=3 * Window.size[0] / 4 - 5,
+                              on_press=self.open_conversation)
+        self.layout.add_widget(message_data)
+
+        message_data1 = Button(text="X",
+                               size_hint_x=None,
+                               size_hint_y=None,
+                               height=button_size,
+                               width=Window.size[0] / 4 - 5)
+        self.layout.add_widget(message_data1)
+
         self.popup_new_contact.dismiss()
+
+    def open_conversation(self, instance):
+        screen_manager.current = "conversation"
+        s1 = screen_manager.get_screen("conversation")
+        s1.user_id_con.text = f"Chat with user: {instance.text}"
 
 
 class SettingsScreen(Screen):
