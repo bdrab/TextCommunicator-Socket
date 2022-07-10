@@ -6,7 +6,7 @@ class Network:
         self.connector = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server = "192.168.0.136"
         self.id = id_user
-        self.port = 5051
+        self.port = 5052
         self.server_address = (self.server, self.port)
         self.status = "not connected"
         self.user_created_status = None

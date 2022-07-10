@@ -39,7 +39,10 @@ class SpinnerWidget(Spinner):
 def send_data_to_server(instance):
     s1 = screen_manager.get_screen("conversation")
     data_to_send = s1.data_input.text
-    userr_id = s1.user_id_con.text
+    userr_id = s1.user_id_con.text.split(":")[1].strip()
+
+    print("to", userr_id, "send", data_to_send)
+
     data = network.send(user=userr_id, data=data_to_send)
 
     if data == "no data":
@@ -48,7 +51,6 @@ def send_data_to_server(instance):
         s1.add_new_row(client_message=False, data=data)
 
     s1.add_new_row(client_message=True, data=data_to_send)
-
 
 def update_chat(instance):
     s1 = screen_manager.get_screen("conversation")
@@ -80,12 +82,6 @@ class MainScreen(Screen):
                                    pos_hint={"x": 0, "y": 1 - button_size/Window.size[1]})
 
         self.float_layout.add_widget(self.user_id)
-
-        self.btn_conversation = Button(text="Conversation",
-                                       pos_hint={"x": 0.2, "y": 0.7},
-                                       size_hint=(0.6, 0.1),
-                                       on_press=self.go_to)
-        self.float_layout.add_widget(self.btn_conversation)
 
         self.btn_contacts = Button(text="Contacts",
                                    pos_hint={"x": 0.2, "y": 0.5},
@@ -208,6 +204,8 @@ class ConversationScreen(Screen):
         self.body_row_data.append([message_data])
 
     def go_to(self, instance):
+        s1 = screen_manager.get_screen("contacts")
+        s1.update.cancel()
         if instance == self.btn_contacts:
             screen_manager.current = "contacts"
         elif instance == self.btn_menu:
@@ -218,6 +216,7 @@ class ContactsScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.float_layout = FloatLayout()
+        self.update = None
 
         self.btn_menu = Button(text="Menu",
                                pos_hint={"x": 0.8, "y": 1 - button_size/Window.size[1]},
@@ -299,7 +298,12 @@ class ContactsScreen(Screen):
     def open_conversation(self, instance):
         screen_manager.current = "conversation"
         s1 = screen_manager.get_screen("conversation")
+        s2 = screen_manager.get_screen("main")
         s1.user_id_con.text = f"Chat with user: {instance.text}"
+
+        network.id = s2.user_id.text.split(":")[1].strip()
+        network.user_created_status = network.connect()
+        self.update = Clock.schedule_interval(update_chat, 1)
 
 
 class SettingsScreen(Screen):

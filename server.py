@@ -3,7 +3,7 @@ from _thread import *
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server = "192.168.0.136"
-port = 5051
+port = 5052
 server_address = (server, port)
 s.bind(server_address)
 s.listen()
