@@ -1,9 +1,10 @@
 import socket
 from _thread import *
+import pickle
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server = "192.168.0.136"
-port = 5052
+port = 5050
 server_address = (server, port)
 s.bind(server_address)
 s.listen()
@@ -18,19 +19,20 @@ def new_client(conn):
     conn.send(str.encode("user created"))
     while True:
         try:
-            data = conn.recv(4096).decode()
+            data = pickle.loads(conn.recv(4096))
             if data != "no data":
                 data = data.split("|")
-                user_data[data[0]] = [data[1]]
+                user_data[data[0]] = {}
+                user_data[data[0]][data[1]] = [data[2]]
+                print(user_data)
         except ConnectionResetError:
             print(f"User {user_id} disconnected.")
             break
 
         if user_id not in user_data:
-            conn.send(str.encode("no data"))
+            conn.send(pickle.dumps("no data"))
         else:
-            user_data_str = "".join(map(str, user_data[user_id]))
-            conn.send(str.encode(user_data_str))
+            conn.send(pickle.dumps(user_data[user_id]))
             del user_data[user_id]
 
 

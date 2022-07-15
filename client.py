@@ -1,7 +1,8 @@
+# Imports
 from network import Network
-
 import datetime
 
+# Kivy
 from kivy.clock import Clock
 from kivy.uix.screenmanager import Screen, ScreenManager, NoTransition
 from kivy.uix.floatlayout import FloatLayout
@@ -15,6 +16,30 @@ from kivy.uix.label import Label
 from kivy.core.window import Window
 from kivy.app import App
 from kivy.uix.popup import Popup
+
+# SQLAlchemy
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base
+from sqlalchemy import Column, Integer, String, DateTime, Boolean
+from sqlalchemy.orm import sessionmaker
+
+engine = create_engine('sqlite:///database.db', echo=False)
+Base = declarative_base()
+Session = sessionmaker(bind=engine)
+session = Session()
+
+
+class Contacts(Base):
+    __tablename__ = 'contacts'
+    id = Column(Integer, primary_key=True)
+    enduser = Column(String)
+    user = Column(String)
+    ms = Column(String)
+    sendreceive = Column(Boolean)
+    time = Column(DateTime)
+
+
+Base.metadata.create_all(engine)
 
 
 class MyTextInput(TextInput):
@@ -39,18 +64,24 @@ class SpinnerWidget(Spinner):
 def send_data_to_server(instance):
     s1 = screen_manager.get_screen("conversation")
     data_to_send = s1.data_input.text
-    userr_id = s1.user_id_con.text.split(":")[1].strip()
+    if data_to_send:
+        receiver_id = s1.user_id_con.text.split(":")[1].strip()
+        data = network.send(user=receiver_id, data=data_to_send)
 
-    print("to", userr_id, "send", data_to_send)
+        if data == "no data":
+            print("no data")
+        else:
+            for value, row in data.items():
+                data = "".join(row)
+                save_message(str(value), network.id, data, False)
+                # TODO: chat cannot be updated if user did not launch any conversation card.
+                param = s1.user_id_con.text.split(":")[1].strip()
+                if param == value:
+                    s1.add_new_row(client_message=False, data=data)
 
-    data = network.send(user=userr_id, data=data_to_send)
+        s1.add_new_row(client_message=True, data=data_to_send)
+        save_message(receiver_id, network.id, data_to_send, True)
 
-    if data == "no data":
-        print("no data")
-    else:
-        s1.add_new_row(client_message=False, data=data)
-
-    s1.add_new_row(client_message=True, data=data_to_send)
 
 def update_chat(instance):
     s1 = screen_manager.get_screen("conversation")
@@ -58,7 +89,30 @@ def update_chat(instance):
     if data == "no data":
         print("no data")
     else:
-        s1.add_new_row(client_message=False, data=data)
+        for value, row in data.items():
+            data = "".join(row)
+            save_message(str(value), network.id, data, False)
+            # TODO: chat cannot be updated if user did not launch any conversation card.
+            param = s1.user_id_con.text.split(":")[1].strip()
+            if param == value:
+                s1.add_new_row(client_message=False, data=data)
+
+            # new messages counter
+            # TODO: needs to be fixed /  counter adds value when conversation is opened.
+            s1 = screen_manager.get_screen("contacts")
+            for record in s1.button_list:
+                if value == record[0].text:
+                    record[2].text = str(int(record[2].text) + 1)
+
+
+def save_message(end_user, user, message, flag):
+    new_record = Contacts(enduser=end_user,
+                          user=user,
+                          ms=message,
+                          sendreceive=flag,
+                          time=datetime.datetime.now())
+    session.add(new_record)
+    session.commit()
 
 
 class MainScreen(Screen):
@@ -70,7 +124,7 @@ class MainScreen(Screen):
             with open("config.txt", "r") as file:
                 user_id = file.read().split(":")[1]
         except FileNotFoundError:
-            user_id = "Error. Please add your ID in settings menu."
+            user_id = "*not set*."
 
         self.user_id = MyTextInput(text=f"Your nickname: {user_id}",
                                    halign="center",
@@ -98,16 +152,18 @@ class MainScreen(Screen):
         self.add_widget(self.float_layout)
 
     def go_to(self, instance):
-        if instance == self.btn_contacts:
-            screen_manager.current = "contacts"
-        elif instance == self.btn_settings:
+        if instance == self.btn_settings:
             screen_manager.current = "settings"
-        elif instance == self.btn_conversation:
-            if self.user_id.text != "Error. Please add your ID in settings menu.":
-                screen_manager.current = "conversation"
+        elif instance == self.btn_contacts:
+            if self.user_id.text != "Your nickname: *not set*." and network.status != "connected":
+                screen_manager.current = "contacts"
                 network.id = self.user_id.text.split(":")[1].strip()
                 network.user_created_status = network.connect()
                 Clock.schedule_interval(update_chat, 1)
+
+            elif network.status == "connected":
+                screen_manager.current = "contacts"
+
             else:
                 btn_close = BoxLayout(orientation="horizontal")
                 popup_warning = Popup(title='Please provide correct User ID',
@@ -173,8 +229,9 @@ class ConversationScreen(Screen):
 
         self.add_widget(self.float_layout)
 
-    def add_new_row(self, client_message=True, data=None):
-        time = str(datetime.datetime.now()).split(".")[0]
+    def add_new_row(self, client_message=True, data=None, time=None):
+        if not time:
+            time = str(datetime.datetime.now()).split(".")[0]
         message_data = f"{time}\n{data}"
 
         # TODO: Issue with fixed label's size needs to be resolved.
@@ -204,12 +261,21 @@ class ConversationScreen(Screen):
         self.body_row_data.append([message_data])
 
     def go_to(self, instance):
-        s1 = screen_manager.get_screen("contacts")
-        s1.update.cancel()
         if instance == self.btn_contacts:
             screen_manager.current = "contacts"
         elif instance == self.btn_menu:
             screen_manager.current = "main"
+
+    def load_conversation(self):
+        for row in self.body_row_data.copy():
+            for widget in row:
+                self.layout.remove_widget(widget)
+            self.body_row_data.remove(row)
+
+        for row in session.query(Contacts).\
+                filter(Contacts.user == network.id, Contacts.enduser == self.user_id_con.text.split(":")[1].strip()).\
+                all():
+            self.add_new_row(client_message=row.sendreceive, data=row.ms, time=row.time)
 
 
 class ContactsScreen(Screen):
@@ -217,6 +283,7 @@ class ContactsScreen(Screen):
         super().__init__(**kwargs)
         self.float_layout = FloatLayout()
         self.update = None
+        self.button_list = []
 
         self.btn_menu = Button(text="Menu",
                                pos_hint={"x": 0.8, "y": 1 - button_size/Window.size[1]},
@@ -242,7 +309,7 @@ class ContactsScreen(Screen):
                                           on_press=self.popup_new_contact.open)
         self.float_layout.add_widget(self.btn_add_new_contact)
 
-        self.layout = GridLayout(cols=2, spacing=10, size_hint_y=None)
+        self.layout = GridLayout(cols=3, spacing=10, size_hint_y=None)
         self.layout.bind(minimum_height=self.layout.setter('height'))
 
         self.root = ScrollView(size_hint=(1, None),
@@ -252,21 +319,31 @@ class ContactsScreen(Screen):
         self.root.add_widget(self.layout)
         self.float_layout.add_widget(self.root)
 
-        for i in range(2):
+        for i in range(5):
             message_data = Button(text=str(i),
                                   size_hint_x=None,
                                   size_hint_y=None,
                                   height=button_size,
-                                  width=3*Window.size[0]/4 - 5,
+                                  width=2*Window.size[0]/4 - 5,
                                   on_press=self.open_conversation)
             self.layout.add_widget(message_data)
+
+            count_message = Button(text="0",
+                                   size_hint_x=None,
+                                   size_hint_y=None,
+                                   height=button_size,
+                                   width=Window.size[0]/4 - 5,
+                                   on_press=self.open_conversation)
+            self.layout.add_widget(count_message)
 
             message_data1 = Button(text="X",
                                    size_hint_x=None,
                                    size_hint_y=None,
                                    height=button_size,
-                                   width=Window.size[0]/4 - 5)
+                                   width=Window.size[0]/4 - 5,
+                                   on_press=self.delete_conversation)
             self.layout.add_widget(message_data1)
+            self.button_list.append([message_data, message_data1, count_message])
 
         self.add_widget(self.float_layout)
 
@@ -274,36 +351,53 @@ class ContactsScreen(Screen):
         if instance == self.btn_menu:
             screen_manager.current = "main"
 
-    def do_nothing(self, instance):
-        pass
-
     def add_new_contact(self, instance):
-        message_data = Button(text=self.text_box_1.text,
-                              size_hint_x=None,
-                              size_hint_y=None,
-                              height=button_size,
-                              width=3 * Window.size[0] / 4 - 5,
-                              on_press=self.open_conversation)
-        self.layout.add_widget(message_data)
+        contact_button = Button(text=self.text_box_1.text,
+                                size_hint_x=None,
+                                size_hint_y=None,
+                                height=button_size,
+                                width=2 * Window.size[0] / 4 - 5,
+                                on_press=self.open_conversation)
+        self.layout.add_widget(contact_button)
 
-        message_data1 = Button(text="X",
+        count_message = Button(text="0",
                                size_hint_x=None,
                                size_hint_y=None,
                                height=button_size,
-                               width=Window.size[0] / 4 - 5)
-        self.layout.add_widget(message_data1)
+                               width=Window.size[0] / 4 - 5,
+                               on_press=self.open_conversation)
+        self.layout.add_widget(count_message)
+
+        contact_delete_button = Button(text="X",
+                                       size_hint_x=None,
+                                       size_hint_y=None,
+                                       height=button_size,
+                                       width=Window.size[0] / 4 - 5,
+                                       on_press=self.delete_conversation)
+        self.layout.add_widget(contact_delete_button)
 
         self.popup_new_contact.dismiss()
+        self.button_list.append([contact_button, contact_delete_button, count_message])
 
-    def open_conversation(self, instance):
+    @staticmethod
+    def open_conversation(instance):
         screen_manager.current = "conversation"
         s1 = screen_manager.get_screen("conversation")
-        s2 = screen_manager.get_screen("main")
         s1.user_id_con.text = f"Chat with user: {instance.text}"
+        s1.load_conversation()
 
-        network.id = s2.user_id.text.split(":")[1].strip()
-        network.user_created_status = network.connect()
-        self.update = Clock.schedule_interval(update_chat, 1)
+    def delete_conversation(self, instance):
+        for record in self.button_list:
+            if instance == record[1]:
+
+                session.query(Contacts).filter(Contacts.user == network.id,
+                                               Contacts.enduser == record[0].text).delete(synchronize_session=False)
+                session.commit()
+
+                self.layout.remove_widget(record[0])
+                self.layout.remove_widget(record[1])
+                self.layout.remove_widget(record[2])
+                self.button_list.remove(record)
 
 
 class SettingsScreen(Screen):
@@ -345,6 +439,7 @@ class SettingsScreen(Screen):
         s1 = screen_manager.get_screen("main")
         s1.user_id.text = f"Your nickname: {self.user_id.text}"
         screen_manager.current = "main"
+        self.user_id.disabled = True
 
 
 class MyApp(App):
