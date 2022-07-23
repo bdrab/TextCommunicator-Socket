@@ -1,14 +1,14 @@
 import socket
 from _thread import *
 import pickle
+SERVER_IP = "192.168.0.136"
+PORT = 5050
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server = "192.168.0.136"
-port = 5050
-server_address = (server, port)
+server_address = (SERVER_IP, PORT)
 s.bind(server_address)
 s.listen()
-print(f"Server online. Listening on {server}:{port}...")
+print(f"Server online. Listening on {SERVER_IP}:{PORT}...")
 user_data = {}
 
 
@@ -24,7 +24,6 @@ def new_client(conn):
                 data = data.split("|")
                 user_data[data[0]] = {}
                 user_data[data[0]][data[1]] = [data[2]]
-                print(user_data)
         except ConnectionResetError:
             print(f"User {user_id} disconnected.")
             break

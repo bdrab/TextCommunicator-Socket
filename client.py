@@ -29,14 +29,20 @@ Session = sessionmaker(bind=engine)
 session = Session()
 
 
-class Contacts(Base):
-    __tablename__ = 'contacts'
+class Conversations(Base):
+    __tablename__ = 'conversations'
     id = Column(Integer, primary_key=True)
     enduser = Column(String)
     user = Column(String)
     ms = Column(String)
     sendreceive = Column(Boolean)
     time = Column(DateTime)
+
+
+class Contacts(Base):
+    __tablename__ = 'contacts'
+    id = Column(Integer, primary_key=True)
+    user = Column(String)
 
 
 Base.metadata.create_all(engine)
@@ -61,56 +67,38 @@ class SpinnerWidget(Spinner):
         self.option_cls = SpinnerOptions
 
 
-def send_data_to_server(instance):
-    s1 = screen_manager.get_screen("conversation")
-    data_to_send = s1.data_input.text
-    if data_to_send:
-        receiver_id = s1.user_id_con.text.split(":")[1].strip()
-        data = network.send(user=receiver_id, data=data_to_send)
-
-        if data == "no data":
-            print("no data")
-        else:
-            for value, row in data.items():
-                data = "".join(row)
-                save_message(str(value), network.id, data, False)
-                # TODO: chat cannot be updated if user did not launch any conversation card.
-                param = s1.user_id_con.text.split(":")[1].strip()
-                if param == value:
-                    s1.add_new_row(client_message=False, data=data)
-
-        s1.add_new_row(client_message=True, data=data_to_send)
-        save_message(receiver_id, network.id, data_to_send, True)
-
-
 def update_chat(instance):
     s1 = screen_manager.get_screen("conversation")
     data = network.send(user=False, data=False)
-    if data == "no data":
-        print("no data")
-    else:
+    if data != "no data":
         for value, row in data.items():
             data = "".join(row)
             save_message(str(value), network.id, data, False)
-            # TODO: chat cannot be updated if user did not launch any conversation card.
-            param = s1.user_id_con.text.split(":")[1].strip()
-            if param == value:
-                s1.add_new_row(client_message=False, data=data)
+
+            if screen_manager.current == "conversation":
+                if s1.contact_user_id == value:
+                    s1.add_new_row(client_message=False, data=data)
 
             # new messages counter
-            # TODO: needs to be fixed /  counter adds value when conversation is opened.
-            s1 = screen_manager.get_screen("contacts")
-            for record in s1.button_list:
-                if value == record[0].text:
-                    record[2].text = str(int(record[2].text) + 1)
+            if not (screen_manager.current == "conversation" and s1.contact_user_id == value):
+                s2 = screen_manager.get_screen("contacts")
+                updated = False
+                for record in s2.button_list:
+                    if value == record[0].text:
+                        updated = True
+                        record[2].text = str(int(record[2].text) + 1)
+
+                # adding new contact if it's not in contact list
+                if not updated:
+                    s2.add_new_contact(text=value)
 
 
 def save_message(end_user, user, message, flag):
-    new_record = Contacts(enduser=end_user,
-                          user=user,
-                          ms=message,
-                          sendreceive=flag,
-                          time=datetime.datetime.now())
+    new_record = Conversations(enduser=end_user,
+                               user=user,
+                               ms=message,
+                               sendreceive=flag,
+                               time=datetime.datetime.now())
     session.add(new_record)
     session.commit()
 
@@ -177,9 +165,11 @@ class MainScreen(Screen):
 class ConversationScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        Window.bind(on_key_down=self._on_keyboard_down)
+
         self.float_layout = FloatLayout()
         self.body_row_data = []
-
+        self.contact_user_id = "N/A"
         self.user_id_con = MyTextInput(text="User ID",
                                        halign="center",
                                        size_hint_x=None,
@@ -192,13 +182,13 @@ class ConversationScreen(Screen):
 
         self.btn_contacts = Button(text="Contacts",
                                    pos_hint={"x": 0.6, "y": 1 - button_size/Window.size[1]},
-                                   size_hint=(0.2, button_size/Window.size[1]),
+                                   size_hint=(0.25, button_size/Window.size[1]),
                                    on_press=self.go_to)
         self.float_layout.add_widget(self.btn_contacts)
 
         self.btn_menu = Button(text="Menu",
-                               pos_hint={"x": 0.8, "y": 1 - button_size/Window.size[1]},
-                               size_hint=(0.2, button_size/Window.size[1]),
+                               pos_hint={"x": 0.85, "y": 1 - button_size/Window.size[1]},
+                               size_hint=(0.15, button_size/Window.size[1]),
                                on_press=self.go_to)
         self.float_layout.add_widget(self.btn_menu)
 
@@ -217,6 +207,7 @@ class ConversationScreen(Screen):
                                       size_hint_x=None,
                                       width=Window.size[0],
                                       size_hint_y=None,
+                                      multiline=False,
                                       height=button_size,
                                       pos_hint={"x": 0, "y": button_size/Window.size[1]})
         self.float_layout.add_widget(self.data_input)
@@ -224,10 +215,31 @@ class ConversationScreen(Screen):
         self.btn_send = Button(text="Send!",
                                pos_hint={"x": 0, "y": 0},
                                size_hint=(1, button_size/Window.size[1]),
-                               on_press=send_data_to_server)
+                               on_press=self.send_data_to_server)
         self.float_layout.add_widget(self.btn_send)
 
         self.add_widget(self.float_layout)
+
+    def _on_keyboard_down(self, instance, keyboard, keycode, text, modifiers):
+        if self.data_input.focus and keycode == 40:
+            self.send_data_to_server()
+
+    def send_data_to_server(self, instance=None):
+        data_to_send = self.data_input.text
+        if data_to_send and data_to_send != "Type your message here...":
+            receiver_id = self.contact_user_id
+            data = network.send(user=receiver_id, data=data_to_send)
+
+            if data != "no data":
+                for sender_id, row in data.items():
+                    data = "".join(row)
+                    save_message(str(sender_id), network.id, data, False)
+                    if self.contact_user_id == sender_id:
+                        self.add_new_row(client_message=False, data=data)
+
+            self.add_new_row(client_message=True, data=data_to_send)
+            save_message(receiver_id, network.id, data_to_send, True)
+            self.data_input.text = "Type your message here..."
 
     def add_new_row(self, client_message=True, data=None, time=None):
         if not time:
@@ -271,11 +283,10 @@ class ConversationScreen(Screen):
             for widget in row:
                 self.layout.remove_widget(widget)
             self.body_row_data.remove(row)
-
-        for row in session.query(Contacts).\
-                filter(Contacts.user == network.id, Contacts.enduser == self.user_id_con.text.split(":")[1].strip()).\
+        for row in session.query(Conversations).\
+                filter(Conversations.user == network.id, Conversations.enduser == self.contact_user_id). \
                 all():
-            self.add_new_row(client_message=row.sendreceive, data=row.ms, time=row.time)
+            self.add_new_row(client_message=row.sendreceive, data=row.ms, time=str(row.time).split(".")[0])
 
 
 class ContactsScreen(Screen):
@@ -296,7 +307,8 @@ class ContactsScreen(Screen):
         self.text_box_1 = MyTextInput(text='')
         popup_content.add_widget(label_box_1)
         popup_content.add_widget(self.text_box_1)
-        popup_content.add_widget(Button(text="Submit", on_press=self.add_new_contact))
+        self.popup_submit_button = Button(text="Submit", on_press=self.add_new_contact)
+        popup_content.add_widget(self.popup_submit_button)
 
         self.popup_new_contact = Popup(title='Add new contact',
                                        content=popup_content,
@@ -318,41 +330,19 @@ class ContactsScreen(Screen):
 
         self.root.add_widget(self.layout)
         self.float_layout.add_widget(self.root)
-
-        for i in range(5):
-            message_data = Button(text=str(i),
-                                  size_hint_x=None,
-                                  size_hint_y=None,
-                                  height=button_size,
-                                  width=2*Window.size[0]/4 - 5,
-                                  on_press=self.open_conversation)
-            self.layout.add_widget(message_data)
-
-            count_message = Button(text="0",
-                                   size_hint_x=None,
-                                   size_hint_y=None,
-                                   height=button_size,
-                                   width=Window.size[0]/4 - 5,
-                                   on_press=self.open_conversation)
-            self.layout.add_widget(count_message)
-
-            message_data1 = Button(text="X",
-                                   size_hint_x=None,
-                                   size_hint_y=None,
-                                   height=button_size,
-                                   width=Window.size[0]/4 - 5,
-                                   on_press=self.delete_conversation)
-            self.layout.add_widget(message_data1)
-            self.button_list.append([message_data, message_data1, count_message])
-
         self.add_widget(self.float_layout)
+        self.load_contacts()
 
     def go_to(self, instance):
         if instance == self.btn_menu:
             screen_manager.current = "main"
 
-    def add_new_contact(self, instance):
-        contact_button = Button(text=self.text_box_1.text,
+    def load_contacts(self):
+        for record in session.query(Contacts).all():
+            self.display_contact(text=record.user)
+
+    def display_contact(self, text, number="0"):
+        contact_button = Button(text=text,
                                 size_hint_x=None,
                                 size_hint_y=None,
                                 height=button_size,
@@ -360,12 +350,11 @@ class ContactsScreen(Screen):
                                 on_press=self.open_conversation)
         self.layout.add_widget(contact_button)
 
-        count_message = Button(text="0",
+        count_message = Button(text=number,
                                size_hint_x=None,
                                size_hint_y=None,
                                height=button_size,
-                               width=Window.size[0] / 4 - 5,
-                               on_press=self.open_conversation)
+                               width=Window.size[0] / 4 - 5)
         self.layout.add_widget(count_message)
 
         contact_delete_button = Button(text="X",
@@ -375,29 +364,51 @@ class ContactsScreen(Screen):
                                        width=Window.size[0] / 4 - 5,
                                        on_press=self.delete_conversation)
         self.layout.add_widget(contact_delete_button)
-
-        self.popup_new_contact.dismiss()
         self.button_list.append([contact_button, contact_delete_button, count_message])
 
-    @staticmethod
-    def open_conversation(instance):
+    def add_new_contact(self, instance=None, text=None):
+
+        if instance == self.popup_submit_button:
+            text = self.text_box_1.text
+            number = "0"
+        else:
+            number = "1"
+
+        if not session.query(Contacts).filter(Contacts.user == text).all():
+            new_contact = Contacts(user=text)
+            session.add(new_contact)
+            session.commit()
+        self.text_box_1.text = ""
+        self.popup_new_contact.dismiss()
+        self.display_contact(text=text, number=number)
+
+    def open_conversation(self, instance):
         screen_manager.current = "conversation"
         s1 = screen_manager.get_screen("conversation")
         s1.user_id_con.text = f"Chat with user: {instance.text}"
+        s1.contact_user_id = instance.text
         s1.load_conversation()
 
-    def delete_conversation(self, instance):
+        # clear unread messages
         for record in self.button_list:
-            if instance == record[1]:
+            if instance == record[0]:
+                record[2].text = "0"
 
-                session.query(Contacts).filter(Contacts.user == network.id,
-                                               Contacts.enduser == record[0].text).delete(synchronize_session=False)
+    def delete_conversation(self, instance):
+        for button in self.button_list:
+            if instance == button[1]:
+                session.query(Conversations).\
+                    filter(Conversations.user == network.id,
+                           Conversations.enduser == button[0].text).delete(synchronize_session=False)
                 session.commit()
 
-                self.layout.remove_widget(record[0])
-                self.layout.remove_widget(record[1])
-                self.layout.remove_widget(record[2])
-                self.button_list.remove(record)
+                session.query(Contacts).filter(Contacts.user == button[0].text).delete(synchronize_session=False)
+                session.commit()
+
+                self.layout.remove_widget(button[0])
+                self.layout.remove_widget(button[1])
+                self.layout.remove_widget(button[2])
+                self.button_list.remove(button)
 
 
 class SettingsScreen(Screen):
@@ -444,6 +455,7 @@ class SettingsScreen(Screen):
 
 class MyApp(App):
     def build(self):
+        self.title = "TextComSoc"
         return screen_manager
 
 
@@ -451,7 +463,6 @@ if __name__ == '__main__':
     Window.softinput_mode = "below_target"
     Window.size = (300, 700)
     button_size = Window.size[1] / 20
-    Window.softinput_mode = "below_target"
     network = Network()
 
     screen_manager = ScreenManager(transition=NoTransition())
